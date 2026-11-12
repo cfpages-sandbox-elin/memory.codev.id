@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codev Memory — herdr-mem Viewer</title>
+  <meta name="description" content="Cross-project memory viewer and recall dashboard for Herdr and AI agent sessions across the Codev ecosystem.">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+      
+      --color-primary: #2563eb;
+      --color-primary-hover: #1d4ed8;
+      
+      /* Light theme tokens */
+      --bg-page: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-header: #ffffff;
+      --bg-subtle: #f1f5f9;
+      --bg-input: #ffffff;
+      --border-color: #e2e8f0;
+      --border-subtle: #cbd5e1;
+      --text-main: #0f172a;
+      --text-sub: #475569;
+      --text-muted: #64748b;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      
+      /* Badges */
+      --badge-summary-bg: #ede9fe; --badge-summary-text: #6d28d9;
+      --badge-decision-bg: #d1fae5; --badge-decision-text: #065f46;
+      --badge-discovery-bg: #fef3c7; --badge-discovery-text: #92400e;
+      --badge-change-bg: #e0f2fe; --badge-change-text: #0369a1;
+      --badge-failure-bg: #fee2e2; --badge-failure-text: #b91c1c;
+    }
+
+    [data-theme="dark"] {
+      --bg-page: #0b1120;
+      --bg-card: #151e32;
+      --bg-header: #0f172a;
+      --bg-subtle: #1e293b;
+      --bg-input: #0f172a;
+      --border-color: #27354f;
+      --border-subtle: #334155;
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --text-muted: #64748b;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3);
+
+      --badge-summary-bg: #2e1065; --badge-summary-text: #c4b5fd;
+      --badge-decision-bg: #064e3b; --badge-decision-text: #6ee7b7;
+      --badge-discovery-bg: #451a03; --badge-discovery-text: #fcd34d;
+      --badge-change-bg: #082f49; --badge-change-text: #7dd3fc;
+      --badge-failure-bg: #450a0a; --badge-failure-text: #fca5a5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    .tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    /* Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background-color: var(--bg-header);
+      border-bottom: 1px solid var(--border-color);
+      box-shadow: var(--shadow-sm);
+    }
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--color-primary);
+      text-decoration: none;
+    }
+    .brand svg { width: 24px; height: 24px; }
+    .brand-tag {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      background: var(--bg-subtle);
+      color: var(--text-sub);
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex: 1;
+      max-width: 650px;
+    }
+    .search-wrap {
+      position: relative;
+      flex: 1;
+    }
+    .search-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 2rem 0 2.25rem;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background-color: var(--bg-input);
+      color: var(--text-main);
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .search-input:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    .search-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+    .search-clear {
+      position: absolute;
+      right: 0.6rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.1rem;
+      line-height: 1;
+      padding: 0.2rem;
+      display: none;
+    }
+    .search-clear.active { display: block; }
+
+    .project-select {
+      height: 40px;
+      padding: 0 1.75rem 0 0.75rem;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background-color: var(--bg-input);
+      color: var(--text-main);
+      font-size: 0.88rem;
+      outline: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .btn-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-sub);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background-color 0.15s, color 0.15s;
+    }
+    .btn-icon:hover {
+      background: var(--bg-subtle);
+      color: var(--text-main);
+    }
+
+    .user-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.6rem 0.25rem 0.4rem;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      color: var(--text-sub);
+    }
+    .user-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--color-primary);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    /* Subbar Stats & Filters */
+    .subbar {
+      background-color: var(--bg-card);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.5rem 1.25rem;
+    }
+    .subbar-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .kind-filters {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .kind-chip {
+      border: 1px solid var(--border-color);
+      background: var(--bg-subtle);
+      color: var(--text-sub);
+      padding: 0.25rem 0.65rem;
+      border-radius: 16px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .kind-chip:hover {
+      border-color: var(--border-subtle);
+      color: var(--text-main);
+    }
+    .kind-chip.active {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #ffffff;
+    }
+    .kind-chip .chip-count {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      opacity: 0.85;
+    }
+
+    .stats-info {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .stat-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-weight: 500;
+    }
+    .stat-badge.failure-alert {
+      color: #ef4444;
+      font-weight: 600;
+    }
+
+    /* Main Content Layout */
+    main {
+      flex: 1;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.25rem;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+    @media (min-width: 1024px) {
+      main {
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      }
+    }
+
+    /* Observation List */
+    .list-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .obs-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+      position: relative;
+    }
+    .obs-card:hover {
+      border-color: var(--border-subtle);
+      box-shadow: var(--shadow-sm);
+      transform: translateY(-1px);
+    }
+    .obs-card.selected {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+      background-color: var(--bg-card);
+    }
+    .obs-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.35rem;
+    }
+    .obs-id-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .obs-id {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-summary { background: var(--badge-summary-bg); color: var(--badge-summary-text); }
+    .badge-decision { background: var(--badge-decision-bg); color: var(--badge-decision-text); }
+    .badge-discovery { background: var(--badge-discovery-bg); color: var(--badge-discovery-text); }
+    .badge-change { background: var(--badge-change-bg); color: var(--badge-change-text); }
+    .badge-failure { background: var(--badge-failure-bg); color: var(--badge-failure-text); }
+
+    .obs-time {
+      font-size: 0.76rem;
+      color: var(--text-muted);
+    }
+    .obs-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 0.3rem;
+      line-height: 1.35;
+    }
+    .obs-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+    .obs-meta-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    /* Inspector Detail Panel */
+    .inspector-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      position: sticky;
+      top: calc(73px + 45px + 1.25rem);
+      max-height: calc(100vh - 150px);
+      overflow-y: auto;
+      box-shadow: var(--shadow-sm);
+    }
+    .inspector-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 300px;
+      text-align: center;
+      color: var(--text-muted);
+      gap: 0.75rem;
+    }
+    .inspector-header {
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 1rem;
+    }
+    .inspector-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-top: 0.4rem;
+      line-height: 1.4;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 0.6rem;
+      margin-bottom: 1.25rem;
+      background: var(--bg-subtle);
+      padding: 0.8rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      font-size: 0.82rem;
+    }
+    .meta-grid-item strong {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .meta-grid-item span {
+      color: var(--text-main);
+      font-weight: 500;
+      word-break: break-all;
+    }
+    .inspector-section-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+    .body-box {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 0.85rem;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text-main);
+      margin-bottom: 1.25rem;
+      font-family: var(--font-sans);
+    }
+    .cli-box {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 0.75rem;
+      color: #38bdf8;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .cli-box code {
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .btn-copy {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background-color 0.15s;
+    }
+    .btn-copy:hover { background: #334155; }
+
+    /* Modals & Overlays */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(11, 17, 32, 0.75);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .auth-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 2.25rem;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.2), 0 8px 10px -6px rgb(0 0 0 / 0.2);
+    }
+    .auth-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--color-primary);
+      margin-bottom: 0.5rem;
+    }
+    .auth-desc {
+      color: var(--text-sub);
+      font-size: 0.92rem;
+      margin-bottom: 1.75rem;
+      line-height: 1.5;
+    }
+    .btn-google {
+      width: 100%;
+      height: 48px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      background: var(--bg-card);
+      color: var(--text-main);
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      transition: background-color 0.15s, border-color 0.15s;
+    }
+    .btn-google:hover {
+      background: var(--bg-subtle);
+      border-color: var(--text-muted);
+    }
+    .btn-danger {
+      background: #ef4444;
+      color: #fff;
+      border: none;
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      height: 44px;
+      margin-top: 1.25rem;
+    }
+    .btn-danger:hover { background: #dc2626; }
+
+    .empty-state {
+      background: var(--bg-card);
+      border: 1px dashed var(--border-subtle);
+      border-radius: 10px;
+      padding: 3rem 1.5rem;
+      text-align: center;
+      color: var(--text-muted);
+    }
+    .empty-state h3 {
+      font-size: 1.1rem;
+      color: var(--text-main);
+      margin-bottom: 0.4rem;
+    }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: #0f172a;
+      color: #fff;
+      padding: 0.6rem 1.1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      display: none;
+      box-shadow: var(--shadow-md);
+      z-index: 200;
+      border: 1px solid #334155;
+    }
+    .toast.show { display: block; animation: toastIn 0.2s ease; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body data-theme="dark">
+
+  <!-- Header -->
+  <header>
+    <div class="header-inner">
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <a href="/" class="brand">
+          <svg fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2a9 9 0 0 0-9 9c0 3.6 2.1 6.7 5.2 8.1.3.1.5-.1.5-.4v-1.8c-2.5.5-3-1.1-3-1.1-.4-1.1-1-1.4-1-1.4-.8-.6.1-.6.1-.6.9.1 1.4 1 1.4 1 .8 1.4 2.1 1 2.6.8.1-.6.3-1 .6-1.2-2-.2-4.1-1-4.1-4.5 0-1 .4-1.8 1-2.5-.1-.2-.4-1.2.1-2.5 0 0 .8-.3 2.6 1 .8-.2 1.6-.3 2.5-.3.8 0 1.7.1 2.5.3 1.8-1.2 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.5.6.7 1 1.5 1 2.5 0 3.5-2.1 4.3-4.1 4.5.3.3.6.9.6 1.8v2.6c0 .3.2.5.5.4A9 9 0 0 0 12 2z"/>
+          </svg>
+          Codev Memory
+        </a>
+        <span class="brand-tag">herdr-mem</span>
+      </div>
+
+      <div class="header-controls">
+        <select id="project-select" class="project-select" aria-label="Filter by project">
+          <option value="ALL">All Projects</option>
+        </select>
+
+        <div class="search-wrap">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="search" id="search-input" class="search-input" placeholder="Search memories by title, kind, session, file..." aria-label="Search observations">
+          <button id="search-clear-btn" class="search-clear" title="Clear search" aria-label="Clear search">✕</button>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="theme-toggle-btn" class="btn-icon" title="Toggle Theme" aria-label="Toggle theme">
+          <span id="theme-icon">☀️</span>
+        </button>
+
+        <div id="user-display" class="user-pill" style="display: none;">
+          <div id="user-avatar" class="user-avatar">?</div>
+          <span id="user-email-text" class="tabular">...</span>
+          <button id="logout-btn" style="background:none;border:none;color:var(--text-muted);cursor:pointer;margin-left:4px;font-size:0.75rem;" title="Sign out">✕</button>
+        </div>
+
+        <button id="login-header-btn" class="btn-icon" style="width: auto; padding: 0 0.8rem; font-weight: 600; font-size: 0.85rem;" title="Sign in with Google">
+          Sign In
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Subbar: Kind Chips & Counters -->
+  <div class="subbar">
+    <div class="subbar-inner">
+      <div class="kind-filters" id="kind-filters">
+        <button class="kind-chip active" data-kind="ALL">All <span class="chip-count" id="count-all">0</span></button>
+        <button class="kind-chip" data-kind="summary">Summary <span class="chip-count" id="count-summary">0</span></button>
+        <button class="kind-chip" data-kind="decision">Decision <span class="chip-count" id="count-decision">0</span></button>
+        <button class="kind-chip" data-kind="discovery">Discovery <span class="chip-count" id="count-discovery">0</span></button>
+        <button class="kind-chip" data-kind="change">Change <span class="chip-count" id="count-change">0</span></button>
+        <button class="kind-chip" data-kind="failure">Failure <span class="chip-count" id="count-failure">0</span></button>
+      </div>
+
+      <div class="stats-info">
+        <span class="stat-badge">Showing <strong id="visible-count" class="tabular">0</strong> of <strong id="total-count" class="tabular">0</strong></span>
+        <span class="stat-badge failure-alert" id="failure-alert-pill" style="display:none;">⚠️ <strong id="alert-failure-count">0</strong> Failures</span>
+        <span class="stat-badge" id="last-sync-badge" style="font-size: 0.75rem;">⚡ Live DB Snapshot</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main View -->
+  <main>
+    <!-- Left: Observation Cards List -->
+    <div class="list-container" id="observation-list" tabindex="0" role="feed" aria-label="Observations feed">
+      <div class="empty-state">
+        <h3>Loading memory snapshot...</h3>
+        <p>Connecting to offline index and live cache.</p>
+      </div>
+    </div>
+
+    <!-- Right: Sticky Observation Inspector -->
+    <div class="inspector-panel" id="inspector-panel">
+      <div class="inspector-empty" id="inspector-empty">
+        <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9z"/>
+        </svg>
+        <p>Select an observation card to inspect full decision context and evidence.</p>
+      </div>
+
+      <div id="inspector-content" style="display: none;">
+        <div class="inspector-header">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="badge" id="insp-badge">KIND</span>
+              <span class="obs-id tabular" id="insp-id">#0</span>
+            </div>
+            <span class="obs-time tabular" id="insp-time">--</span>
+          </div>
+          <h2 class="inspector-title" id="insp-title">Observation Title</h2>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-grid-item">
+            <strong>Project</strong>
+            <span id="insp-project">--</span>
+          </div>
+          <div class="meta-grid-item">
+            <strong>Harness</strong>
+            <span id="insp-harness">--</span>
+          </div>
+          <div class="meta-grid-item">
+            <strong>Fidelity</strong>
+            <span id="insp-fidelity">--</span>
+          </div>
+          <div class="meta-grid-item">
+            <strong>Session ID</strong>
+            <span id="insp-session" class="tabular">--</span>
+          </div>
+          <div class="meta-grid-item" style="grid-column: 1 / -1;">
+            <strong>Source Key</strong>
+            <span id="insp-source-key" class="tabular">--</span>
+          </div>
+        </div>
+
+        <div class="inspector-section-label">Observation Detail Body</div>
+        <div class="body-box" id="insp-body"></div>
+
+        <div class="inspector-section-label">CLI Drill-Down Command</div>
+        <div class="cli-box">
+          <code id="insp-cli-command">herdr-mem get-observations --project ALL --ids 0 --json</code>
+          <button class="btn-copy" id="btn-copy-cli">Copy</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Login Modal -->
+  <div class="modal-overlay" id="auth-modal" style="display: none;">
+    <div class="auth-card">
+      <h1 class="auth-title">Codev Memory</h1>
+      <p class="auth-desc">Sign in with your authorized Google account to access cross-project memory, agent decisions, and failure traces.</p>
+      
+      <button class="btn-google" id="modal-google-login">
+        <svg width="20" height="20" viewBox="0 0 488 512" fill="currentColor">
+          <path fill="#4285F4" d="M488 261.8C488 403.3 381.5 512 244 512 111.3 512 0 400.7 0 268.3 0 135.8 111.3 24.5 244 24.5c69.2 0 128.7 27.2 174.9 69.4l-66.2 64.2c-26.6-25-61.9-40.4-108.7-40.4-83.3 0-151.7 67.5-151.7 150.8s68.4 150.8 151.7 150.8c90.1 0 134.1-62.4 139.1-94.8H244v-77.3h236.1c2.4 12.7 4.9 25.8 4.9 39.7z"></path>
+        </svg>
+        Sign in with Google
+      </button>
+    </div>
+  </div>
+
+  <!-- Access Denied Barrier Modal -->
+  <div class="modal-overlay" id="denied-modal" style="display: none;">
+    <div class="auth-card" style="border-color: #ef4444;">
+      <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🛡️</div>
+      <h2 style="font-size: 1.4rem; color: #ef4444; margin-bottom: 0.5rem;">Access Denied</h2>
+      <p style="color: var(--text-sub); font-size: 0.9rem; line-height: 1.5; margin-bottom: 1rem;">
+        Your authenticated Google account (<strong id="denied-email" class="tabular">unknown</strong>) is not authorized to access Codev Memory.
+      </p>
+      <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
+        Access is restricted to Syamsul Alam and verified @codev.id administrative engineers.
+      </p>
+      <button class="btn-danger" id="denied-logout-btn">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast-message">Copied to clipboard</div>
+
+  <script>
+    // --- Configuration ---
+    const SUPABASE_URL = "https://gfnjestxjgkfujzubiqr.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdmbmplc3R4amdrZnVqenViaXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ1OTk1NDQsImV4cCI6MjA3MDE3NTU0NH0.7BGMEP3Xz3j8yQ6G3GjZthKY3Tz9ErS86yFyu2a60To";
+    
+    const ALLOWED_EMAILS = [
+      "admin@alampintar.org",
+      "admin@codev.id",
+      "evelinaquinta@gmail.com"
+    ];
+
+    function isAuthorizedEmail(email) {
+      if (!email) return false;
+      const lower = email.toLowerCase().trim();
+      if (ALLOWED_EMAILS.includes(lower)) return true;
+      if (lower.endsWith("@codev.id")) return true;
+      return false;
+    }
+
+    // Initialize Supabase Client
+    let supabase = null;
+    try {
+      if (window.supabase) {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+    } catch (e) {
+      console.warn("Supabase initialization error:", e);
+    }
+
+    // --- State ---
+    let currentSession = null;
+    let allItems = [];
+    let allDetails = {};
+    let activeKind = "ALL";
+    let selectedItemId = null;
+
+    // --- DOM Elements ---
+    const listContainer = document.getElementById("observation-list");
+    const searchInput = document.getElementById("search-input");
+    const searchClearBtn = document.getElementById("search-clear-btn");
+    const projectSelect = document.getElementById("project-select");
+    const kindFilters = document.getElementById("kind-filters");
+    const visibleCount = document.getElementById("visible-count");
+    const totalCount = document.getElementById("total-count");
+    const failureAlertPill = document.getElementById("failure-alert-pill");
+    const alertFailureCount = document.getElementById("alert-failure-count");
+    
+    // Inspector elements
+    const inspectorEmpty = document.getElementById("inspector-empty");
+    const inspectorContent = document.getElementById("inspector-content");
+    const inspBadge = document.getElementById("insp-badge");
+    const inspId = document.getElementById("insp-id");
+    const inspTime = document.getElementById("insp-time");
+    const inspTitle = document.getElementById("insp-title");
+    const inspProject = document.getElementById("insp-project");
+    const inspHarness = document.getElementById("insp-harness");
+    const inspFidelity = document.getElementById("insp-fidelity");
+    const inspSession = document.getElementById("insp-session");
+    const inspSourceKey = document.getElementById("insp-source-key");
+    const inspBody = document.getElementById("insp-body");
+    const inspCliCommand = document.getElementById("insp-cli-command");
+    const btnCopyCli = document.getElementById("btn-copy-cli");
+
+    // Auth & Modals
+    const authModal = document.getElementById("auth-modal");
+    const deniedModal = document.getElementById("denied-modal");
+    const deniedEmailText = document.getElementById("denied-email");
+    const userDisplay = document.getElementById("user-display");
+    const userAvatar = document.getElementById("user-avatar");
+    const userEmailText = document.getElementById("user-email-text");
+    const loginHeaderBtn = document.getElementById("login-header-btn");
+    const logoutBtn = document.getElementById("logout-btn");
+    const deniedLogoutBtn = document.getElementById("denied-logout-btn");
+    const modalGoogleLogin = document.getElementById("modal-google-login");
+    const themeToggleBtn = document.getElementById("theme-toggle-btn");
+    const themeIcon = document.getElementById("theme-icon");
+    const toast = document.getElementById("toast-message");
+
+    // --- Theme Management ---
+    function initTheme() {
+      const saved = localStorage.getItem("herdr_mem_theme");
+      if (saved) {
+        document.body.setAttribute("data-theme", saved);
+        themeIcon.textContent = saved === "dark" ? "☀️" : "🌙";
+      } else {
+        document.body.setAttribute("data-theme", "dark");
+        themeIcon.textContent = "☀️";
+      }
+    }
+    themeToggleBtn.addEventListener("click", () => {
+      const current = document.body.getAttribute("data-theme");
+      const next = current === "dark" ? "light" : "dark";
+      document.body.setAttribute("data-theme", next);
+      localStorage.setItem("herdr_mem_theme", next);
+      themeIcon.textContent = next === "dark" ? "☀️" : "🌙";
+    });
+
+    // --- Toast helper ---
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 2000);
+    }
+
+    // --- Auth Handlers ---
+    async function checkAuth() {
+      if (!supabase) return;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        handleSession(session);
+        supabase.auth.onAuthStateChange((_event, session) => {
+          handleSession(session);
+        });
+      } catch (err) {
+        console.error("Auth check failed:", err);
+      }
+    }
+
+    function handleSession(session) {
+      currentSession = session;
+      if (!session) {
+        // Not logged in
+        authModal.style.display = "flex";
+        deniedModal.style.display = "none";
+        userDisplay.style.display = "none";
+        loginHeaderBtn.style.display = "inline-flex";
+        return;
+      }
+
+      const email = session.user?.email || "";
+      if (!isAuthorizedEmail(email)) {
+        // Unauthorized user
+        authModal.style.display = "none";
+        deniedModal.style.display = "flex";
+        deniedEmailText.textContent = email;
+        userDisplay.style.display = "none";
+        loginHeaderBtn.style.display = "none";
+        return;
+      }
+
+      // Authorized user!
+      authModal.style.display = "none";
+      deniedModal.style.display = "none";
+      loginHeaderBtn.style.display = "none";
+      userDisplay.style.display = "flex";
+      userEmailText.textContent = email;
+      userAvatar.textContent = email.charAt(0).toUpperCase();
+
+      // Load data if not already loaded
+      if (allItems.length === 0) {
+        loadMemorySnapshot();
+      }
+    }
+
+    async function loginWithGoogle() {
+      if (!supabase) return;
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+    }
+
+    async function handleLogout() {
+      if (!supabase) return;
+      await supabase.auth.signOut();
+      window.location.reload();
+    }
+
+    modalGoogleLogin.addEventListener("click", loginWithGoogle);
+    loginHeaderBtn.addEventListener("click", () => { authModal.style.display = "flex"; });
+    logoutBtn.addEventListener("click", handleLogout);
+    deniedLogoutBtn.addEventListener("click", handleLogout);
+
+    // --- Data Loading ---
+    async function loadMemorySnapshot() {
+      try {
+        const res = await fetch("data/memory-snapshot.json");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        allItems = data.items || [];
+        allDetails = data.details || {};
+
+        populateProjectSelect(data.stats?.projects || []);
+        updateStats();
+        renderObservations();
+      } catch (err) {
+        console.error("Failed to load snapshot:", err);
+        listContainer.innerHTML = `
+          <div class="empty-state">
+            <h3>Memory Snapshot Offline</h3>
+            <p>Could not fetch data/memory-snapshot.json (${err.message}).</p>
+          </div>
+        `;
+      }
+    }
+
+    function populateProjectSelect(projects) {
+      projectSelect.innerHTML = `<option value="ALL">All Projects</option>`;
+      const uniqueProjects = new Set(projects);
+      allItems.forEach(it => { if (it.project) uniqueProjects.add(it.project); });
+      Array.from(uniqueProjects).sort().forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p;
+        opt.textContent = p;
+        projectSelect.appendChild(opt);
+      });
+    }
+
+    function updateStats() {
+      const counts = { summary: 0, decision: 0, discovery: 0, change: 0, failure: 0 };
+      allItems.forEach(it => {
+        if (counts[it.kind] !== undefined) counts[it.kind]++;
+      });
+
+      document.getElementById("count-all").textContent = allItems.length;
+      document.getElementById("count-summary").textContent = counts.summary;
+      document.getElementById("count-decision").textContent = counts.decision;
+      document.getElementById("count-discovery").textContent = counts.discovery;
+      document.getElementById("count-change").textContent = counts.change;
+      document.getElementById("count-failure").textContent = counts.failure;
+
+      totalCount.textContent = allItems.length;
+      if (counts.failure > 0) {
+        failureAlertPill.style.display = "inline-flex";
+        alertFailureCount.textContent = counts.failure;
+      } else {
+        failureAlertPill.style.display = "none";
+      }
+    }
+
+    // --- Filtering and Rendering ---
+    function getFilteredItems() {
+      const q = (searchInput.value || "").toLowerCase().trim();
+      const proj = projectSelect.value;
+      const kind = activeKind;
+
+      return allItems.filter(it => {
+        if (proj !== "ALL" && it.project !== proj) return false;
+        if (kind !== "ALL" && it.kind !== kind) return false;
+        if (!q) return true;
+
+        const title = (it.title || "").toLowerCase();
+        const body = ((allDetails[String(it.id)] || {}).body || "").toLowerCase();
+        const sess = (it.native_session_id || "").toLowerCase();
+        const harness = (it.harness || "").toLowerCase();
+        const idStr = String(it.id);
+
+        return title.includes(q) || body.includes(q) || sess.includes(q) || harness.includes(q) || idStr === q;
+      });
+    }
+
+    function renderObservations() {
+      const filtered = getFilteredItems();
+      visibleCount.textContent = filtered.length;
+      searchClearBtn.classList.toggle("active", Boolean(searchInput.value));
+
+      listContainer.innerHTML = "";
+      if (filtered.length === 0) {
+        listContainer.innerHTML = `
+          <div class="empty-state">
+            <h3>No Matching Observations</h3>
+            <p>Try broadening your query, switching projects, or clearing filters.</p>
+          </div>
+        `;
+        return;
+      }
+
+      filtered.forEach(it => {
+        const card = document.createElement("div");
+        card.className = "obs-card" + (selectedItemId === it.id ? " selected" : "");
+        card.tabIndex = 0;
+        card.setAttribute("role", "article");
+
+        const topRow = document.createElement("div");
+        topRow.className = "obs-top";
+
+        const idGroup = document.createElement("div");
+        idGroup.className = "obs-id-group";
+
+        const badge = document.createElement("span");
+        badge.className = "badge badge-" + (it.kind || "discovery");
+        badge.textContent = it.kind || "discovery";
+
+        const idSpan = document.createElement("span");
+        idSpan.className = "obs-id tabular";
+        idSpan.textContent = "#" + it.id;
+
+        idGroup.appendChild(badge);
+        idGroup.appendChild(idSpan);
+
+        const timeSpan = document.createElement("span");
+        timeSpan.className = "obs-time tabular";
+        timeSpan.textContent = formatTimestamp(it.occurred_at);
+
+        topRow.appendChild(idGroup);
+        topRow.appendChild(timeSpan);
+
+        const titleH3 = document.createElement("h3");
+        titleH3.className = "obs-title";
+        titleH3.textContent = it.title || "Tool Activity";
+
+        const metaRow = document.createElement("div");
+        metaRow.className = "obs-meta-row";
+        metaRow.innerHTML = `
+          <span class="obs-meta-item">📁 <strong>${escapeHtml(it.project)}</strong></span>
+          <span class="obs-meta-item">🤖 ${escapeHtml(it.harness)}</span>
+          <span class="obs-meta-item tabular">🔑 ${escapeHtml(it.native_session_id ? it.native_session_id.substring(0, 10) + '...' : '--')}</span>
+          <span class="obs-meta-item tabular">📏 ${it.cost_chars}ch</span>
+        `;
+
+        card.appendChild(topRow);
+        card.appendChild(titleH3);
+        card.appendChild(metaRow);
+
+        card.addEventListener("click", () => selectObservation(it));
+        card.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            selectObservation(it);
+          }
+        });
+
+        listContainer.appendChild(card);
+      });
+
+      // Auto-select first item if nothing selected
+      if (!selectedItemId && filtered.length > 0) {
+        selectObservation(filtered[0]);
+      }
+    }
+
+    function selectObservation(it) {
+      selectedItemId = it.id;
+      document.querySelectorAll(".obs-card").forEach(c => c.classList.remove("selected"));
+      
+      inspectorEmpty.style.display = "none";
+      inspectorContent.style.display = "block";
+
+      inspBadge.className = "badge badge-" + (it.kind || "discovery");
+      inspBadge.textContent = it.kind || "discovery";
+      inspId.textContent = "#" + it.id;
+      inspTime.textContent = it.occurred_at || "--";
+      inspTitle.textContent = it.title || "Tool Activity";
+
+      inspProject.textContent = it.project || "--";
+      inspHarness.textContent = it.harness || "--";
+      inspFidelity.textContent = it.fidelity || "--";
+      inspSession.textContent = it.native_session_id || "--";
+      inspSourceKey.textContent = it.source_key || "--";
+
+      const detail = allDetails[String(it.id)] || {};
+      inspBody.textContent = detail.body || "(No detailed body recorded for this observation)";
+      inspCliCommand.textContent = `herdr-mem get-observations --project ${it.project} --ids ${it.id} --json`;
+    }
+
+    // --- Search & Filter Event Listeners ---
+    searchInput.addEventListener("input", renderObservations);
+    searchClearBtn.addEventListener("click", () => {
+      searchInput.value = "";
+      renderObservations();
+      searchInput.focus();
+    });
+    projectSelect.addEventListener("change", renderObservations);
+
+    kindFilters.addEventListener("click", (e) => {
+      const chip = e.target.closest(".kind-chip");
+      if (!chip) return;
+      document.querySelectorAll(".kind-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      activeKind = chip.getAttribute("data-kind");
+      renderObservations();
+    });
+
+    btnCopyCli.addEventListener("click", () => {
+      const cmd = inspCliCommand.textContent;
+      navigator.clipboard.writeText(cmd).then(() => {
+        showToast("CLI command copied to clipboard!");
+      });
+    });
+
+    // Utilities
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>"']/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
+    }
+    function formatTimestamp(isoStr) {
+      if (!isoStr) return "--";
+      try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr.substring(0, 19);
+        return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch (e) {
+        return isoStr;
+      }
+    }
+
+    // Initialize
+    initTheme();
+    checkAuth();
+  </script>
+</body>
+</html>
